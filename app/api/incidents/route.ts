@@ -62,8 +62,8 @@ export async function GET(request: NextRequest) {
 }
 
 async function geocodeIncidentsWithCache(incidents: Incident[]): Promise<Incident[]> {
-  // Geocode first 30 incidents for better map coverage
-  const maxGeocode = Math.min(30, incidents.length);
+  // Geocode all incidents (caching makes this fast)
+  const maxGeocode = incidents.length;
   const geocodedIncidents: Incident[] = [];
 
   for (let i = 0; i < incidents.length; i++) {
