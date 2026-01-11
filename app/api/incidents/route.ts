@@ -130,6 +130,78 @@ async function getCoordinatesWithCache(
   }
 }
 
+function detectAndFormatIntersection(address: string): {
+  isIntersection: boolean;
+  formats: string[];
+} {
+  // Remove common prefixes/suffixes that might confuse detection
+  const cleanAddress = address.trim();
+  
+  // Patterns that indicate an intersection
+  const intersectionPatterns = [
+    { regex: /\s*\/\s*/, name: 'slash' },
+    { regex: /\s*&\s*/, name: 'ampersand' },
+    { regex: /\s+and\s+/i, name: 'and' },
+    { regex: /\s+at\s+/i, name: 'at' },
+    { regex: /\s*@\s*/, name: 'at-symbol' },
+  ];
+
+  for (const pattern of intersectionPatterns) {
+    if (pattern.regex.test(cleanAddress)) {
+      const streets = cleanAddress.split(pattern.regex).map(s => s.trim());
+      
+      if (streets.length === 2 && streets[0] && streets[1]) {
+        // Generate multiple format attempts
+        return {
+          isIntersection: true,
+          formats: [
+            `${streets[0]} and ${streets[1]}`, // Most common format
+            `${streets[0]} & ${streets[1]}`,   // Alternative
+            `intersection of ${streets[0]} and ${streets[1]}`, // Explicit
+            streets[0], // Fallback: just first street
+            streets[1], // Fallback: just second street
+          ],
+        };
+      }
+    }
+  }
+
+  return { isIntersection: false, formats: [cleanAddress] };
+}
+
+async function tryMapboxGeocode(
+  fullAddress: string,
+  mapboxToken: string
+): Promise<{ latitude?: number; longitude?: number }> {
+  try {
+    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(fullAddress)}.json?access_token=${mapboxToken}&limit=1&country=US&proximity=-122.3321,47.6062`;
+
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'SeattleResponseMap/1.0',
+      },
+    });
+
+    if (!response.ok) {
+      return {};
+    }
+
+    const data = await response.json();
+
+    if (data.features && data.features.length > 0) {
+      const [longitude, latitude] = data.features[0].center;
+      // Check if result is actually in Seattle area (rough bounds)
+      if (latitude >= 47.4 && latitude <= 47.8 && longitude >= -122.5 && longitude <= -122.1) {
+        return { latitude, longitude };
+      }
+    }
+
+    return {};
+  } catch (error) {
+    return {};
+  }
+}
+
 async function geocodeWithMapbox(
   address: string
 ): Promise<{ latitude?: number; longitude?: number }> {
@@ -141,23 +213,30 @@ async function geocodeWithMapbox(
       return {};
     }
 
-    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(address)}.json?access_token=${mapboxToken}&limit=1&country=US&proximity=-122.3321,47.6062`;
+    // Detect if this is an intersection and get format variations
+    const { isIntersection, formats } = detectAndFormatIntersection(address);
 
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'SeattleResponseMap/1.0',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Mapbox API error: ${response.status}`);
+    if (isIntersection) {
+      console.log(`Detected intersection: ${address}`);
     }
 
-    const data = await response.json();
+    // Try each format until one succeeds
+    for (let i = 0; i < formats.length; i++) {
+      const format = formats[i];
+      const fullAddress = `${format}, Seattle, WA`;
+      
+      const result = await tryMapboxGeocode(fullAddress, mapboxToken);
+      
+      if (result.latitude && result.longitude) {
+        if (isIntersection) {
+          console.log(`✓ Intersection geocoded using format ${i + 1}/${formats.length}: "${format}"`);
+        }
+        return result;
+      }
+    }
 
-    if (data.features && data.features.length > 0) {
-      const [longitude, latitude] = data.features[0].center;
-      return { latitude, longitude };
+    if (isIntersection) {
+      console.log(`✗ Failed to geocode intersection after ${formats.length} attempts: ${address}`);
     }
 
     return {};
