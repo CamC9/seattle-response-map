@@ -47,21 +47,26 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    // Geocode the locations
-    const geocodedIncidents = await Promise.all(
-      incidents.map(async (incident) => {
-        try {
-          const geocoded = await geocodeAddress(incident.location);
-          return {
-            ...incident,
-            ...geocoded,
-          };
-        } catch (error) {
-          console.error(`Failed to geocode ${incident.location}:`, error);
-          return incident;
+    // Geocode the locations with rate limiting (1 request per second for Nominatim)
+    const geocodedIncidents: Incident[] = [];
+    for (let i = 0; i < incidents.length; i++) {
+      const incident = incidents[i];
+      try {
+        const geocoded = await geocodeAddress(incident.location);
+        geocodedIncidents.push({
+          ...incident,
+          ...geocoded,
+        });
+        
+        // Add delay between requests (respect Nominatim's usage policy)
+        if (i < incidents.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
-      })
-    );
+      } catch (error) {
+        console.error(`Failed to geocode ${incident.location}:`, error);
+        geocodedIncidents.push(incident);
+      }
+    }
 
     return NextResponse.json({ incidents: geocodedIncidents, date });
   } catch (error) {
@@ -79,11 +84,18 @@ async function geocodeAddress(address: string): Promise<{ latitude?: number; lon
     const fullAddress = `${address}, Seattle, WA`;
     const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullAddress)}&limit=1`;
     
+    // Create abort controller for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+    
     const response = await fetch(url, {
       headers: {
         'User-Agent': 'SeattleResponseMap/1.0',
       },
+      signal: controller.signal,
     });
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       throw new Error('Geocoding failed');
@@ -100,7 +112,11 @@ async function geocodeAddress(address: string): Promise<{ latitude?: number; lon
     
     return {};
   } catch (error) {
-    console.error('Geocoding error:', error);
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.error('Geocoding timeout:', address);
+    } else {
+      console.error('Geocoding error:', error);
+    }
     return {};
   }
 }
