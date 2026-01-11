@@ -21,7 +21,10 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState(() => {
     const today = new Date();
-    return today.toISOString().split('T')[0];
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   });
   const [filter, setFilter] = useState<IncidentFilter>({
     type: '',
@@ -37,7 +40,10 @@ export default function Home() {
     setLoading(true);
     setError(null);
     try {
-      const dateFormatted = new Date(selectedDate).toLocaleDateString('en-US');
+      // Parse date directly without timezone conversion
+      // Input: "2026-01-11" -> Output: "1/11/2026"
+      const [year, month, day] = selectedDate.split('-');
+      const dateFormatted = `${parseInt(month)}/${parseInt(day)}/${year}`;
       const response = await fetch(`/api/incidents?date=${encodeURIComponent(dateFormatted)}`);
       
       if (!response.ok) {
