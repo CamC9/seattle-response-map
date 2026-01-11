@@ -47,9 +47,13 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    // Geocode the locations with rate limiting (1 request per second for Nominatim)
+    // Limit geocoding to first 20 incidents to improve load time
+    // The rest will be shown in the list but not on the map
+    const maxGeocode = Math.min(20, incidents.length);
     const geocodedIncidents: Incident[] = [];
-    for (let i = 0; i < incidents.length; i++) {
+    
+    // Geocode only the first batch
+    for (let i = 0; i < maxGeocode; i++) {
       const incident = incidents[i];
       try {
         const geocoded = await geocodeAddress(incident.location);
@@ -58,14 +62,19 @@ export async function GET(request: NextRequest) {
           ...geocoded,
         });
         
-        // Add delay between requests (respect Nominatim's usage policy)
-        if (i < incidents.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
+        // Small delay between requests
+        if (i < maxGeocode - 1) {
+          await new Promise(resolve => setTimeout(resolve, 500));
         }
       } catch (error) {
         console.error(`Failed to geocode ${incident.location}:`, error);
         geocodedIncidents.push(incident);
       }
+    }
+    
+    // Add remaining incidents without geocoding
+    for (let i = maxGeocode; i < incidents.length; i++) {
+      geocodedIncidents.push(incidents[i]);
     }
 
     return NextResponse.json({ incidents: geocodedIncidents, date });
