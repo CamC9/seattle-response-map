@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
 import { Incident } from '@/lib/types';
+import { supabase } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -47,9 +48,10 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    // Return incidents immediately - geocoding is optional and done in background
-    // This ensures fast page loads regardless of geocoding service availability
-    return NextResponse.json({ incidents, date });
+    // Geocode incidents with caching
+    const geocodedIncidents = await geocodeIncidentsWithCache(incidents);
+    
+    return NextResponse.json({ incidents: geocodedIncidents, date });
   } catch (error) {
     console.error('Error fetching incidents:', error);
     return NextResponse.json(
@@ -59,45 +61,108 @@ export async function GET(request: NextRequest) {
   }
 }
 
-async function geocodeAddress(address: string): Promise<{ latitude?: number; longitude?: number }> {
+async function geocodeIncidentsWithCache(incidents: Incident[]): Promise<Incident[]> {
+  // Geocode first 30 incidents for better map coverage
+  const maxGeocode = Math.min(30, incidents.length);
+  const geocodedIncidents: Incident[] = [];
+
+  for (let i = 0; i < incidents.length; i++) {
+    const incident = incidents[i];
+    
+    // Only geocode first batch, rest go through without coordinates
+    if (i < maxGeocode) {
+      try {
+        const coords = await getCoordinatesWithCache(incident.location);
+        geocodedIncidents.push({
+          ...incident,
+          ...coords,
+        });
+      } catch (error) {
+        console.error(`Failed to geocode ${incident.location}:`, error);
+        geocodedIncidents.push(incident);
+      }
+    } else {
+      geocodedIncidents.push(incident);
+    }
+  }
+
+  return geocodedIncidents;
+}
+
+async function getCoordinatesWithCache(
+  address: string
+): Promise<{ latitude?: number; longitude?: number }> {
+  const normalizedAddress = `${address}, Seattle, WA`.toLowerCase().trim();
+
   try {
-    // Add "Seattle, WA" to improve geocoding accuracy
-    const fullAddress = `${address}, Seattle, WA`;
-    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullAddress)}&limit=1`;
+    // Check Supabase cache first
+    const { data: cached, error: cacheError } = await supabase
+      .from('geocoded_addresses')
+      .select('latitude, longitude')
+      .eq('address', normalizedAddress)
+      .single();
+
+    if (cached && !cacheError) {
+      console.log(`Cache hit for: ${address}`);
+      return {
+        latitude: cached.latitude,
+        longitude: cached.longitude,
+      };
+    }
+
+    // Cache miss - geocode with Mapbox
+    console.log(`Cache miss, geocoding: ${address}`);
+    const coords = await geocodeWithMapbox(normalizedAddress);
+
+    // Store in cache if successful
+    if (coords.latitude && coords.longitude) {
+      await supabase.from('geocoded_addresses').insert({
+        address: normalizedAddress,
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+      });
+    }
+
+    return coords;
+  } catch (error) {
+    console.error(`Geocoding error for ${address}:`, error);
+    return {};
+  }
+}
+
+async function geocodeWithMapbox(
+  address: string
+): Promise<{ latitude?: number; longitude?: number }> {
+  try {
+    const mapboxToken = process.env.MAPBOX_ACCESS_TOKEN;
     
-    // Create abort controller for timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
-    
+    if (!mapboxToken) {
+      console.error('MAPBOX_ACCESS_TOKEN not configured');
+      return {};
+    }
+
+    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(address)}.json?access_token=${mapboxToken}&limit=1&country=US&proximity=-122.3321,47.6062`;
+
     const response = await fetch(url, {
       headers: {
         'User-Agent': 'SeattleResponseMap/1.0',
       },
-      signal: controller.signal,
     });
 
-    clearTimeout(timeoutId);
-
     if (!response.ok) {
-      throw new Error('Geocoding failed');
+      throw new Error(`Mapbox API error: ${response.status}`);
     }
 
     const data = await response.json();
-    
-    if (data && data.length > 0) {
-      return {
-        latitude: parseFloat(data[0].lat),
-        longitude: parseFloat(data[0].lon),
-      };
+
+    if (data.features && data.features.length > 0) {
+      const [longitude, latitude] = data.features[0].center;
+      return { latitude, longitude };
     }
-    
+
     return {};
   } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      console.error('Geocoding timeout:', address);
-    } else {
-      console.error('Geocoding error:', error);
-    }
+    console.error('Mapbox geocoding error:', error);
     return {};
   }
 }
