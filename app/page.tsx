@@ -133,6 +133,32 @@ export default function Home() {
               <p className="text-sm">{error}</p>
             </div>
           )}
+
+          {/* Incidents List */}
+          <div className="mt-4 bg-white p-4 rounded-lg shadow-md max-h-96 overflow-y-auto">
+            <h2 className="font-semibold text-gray-700 mb-3">Incidents</h2>
+            {filteredIncidents.length > 0 ? (
+              <div className="space-y-2">
+                {filteredIncidents.slice(0, 50).map((incident, index) => (
+                  <div key={`${incident.incidentNumber}-${index}`} className="border-b border-gray-200 pb-2 last:border-0">
+                    <div className="text-sm">
+                      <p className="font-semibold text-gray-800">{incident.type}</p>
+                      <p className="text-xs text-gray-600">{incident.dateTime}</p>
+                      <p className="text-xs text-gray-600">{incident.location}</p>
+                      <p className="text-xs text-gray-500">Level: {incident.level} | Units: {incident.units}</p>
+                    </div>
+                  </div>
+                ))}
+                {filteredIncidents.length > 50 && (
+                  <p className="text-xs text-gray-500 text-center pt-2">
+                    Showing first 50 of {filteredIncidents.length} incidents
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">No incidents to display</p>
+            )}
+          </div>
         </aside>
 
         {/* Map */}

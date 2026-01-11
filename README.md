@@ -33,7 +33,21 @@ This application fetches data from the [Seattle Fire Department Real-Time 911](h
 - **Styling**: Tailwind CSS
 - **Map Library**: Leaflet with react-leaflet
 - **Data Parsing**: Cheerio
-- **Geocoding**: Nominatim (OpenStreetMap)
+
+## Known Limitations
+
+### Map Markers
+The Seattle Fire Department API provides street addresses but not coordinates. Currently, the application displays incidents in the sidebar/statistics but **map markers are not shown** because:
+
+1. Free geocoding services (Nominatim) have strict rate limits and connection issues
+2. Geocoding hundreds of incidents causes slow page loads (20+ seconds)
+3. To maintain fast user experience, geocoding has been disabled
+
+**Future Solutions:**
+- Integrate a paid geocoding service (Google Maps, Mapbox) with an API key
+- Implement a geocoding cache/database to store pre-geocoded locations
+- Use client-side geocoding on-demand when users click on incidents
+- Contribute coordinates back to Seattle's open data portal
 
 ## Getting Started
 

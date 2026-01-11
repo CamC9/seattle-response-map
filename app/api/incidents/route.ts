@@ -47,37 +47,9 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    // Limit geocoding to first 20 incidents to improve load time
-    // The rest will be shown in the list but not on the map
-    const maxGeocode = Math.min(20, incidents.length);
-    const geocodedIncidents: Incident[] = [];
-    
-    // Geocode only the first batch
-    for (let i = 0; i < maxGeocode; i++) {
-      const incident = incidents[i];
-      try {
-        const geocoded = await geocodeAddress(incident.location);
-        geocodedIncidents.push({
-          ...incident,
-          ...geocoded,
-        });
-        
-        // Small delay between requests
-        if (i < maxGeocode - 1) {
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
-      } catch (error) {
-        console.error(`Failed to geocode ${incident.location}:`, error);
-        geocodedIncidents.push(incident);
-      }
-    }
-    
-    // Add remaining incidents without geocoding
-    for (let i = maxGeocode; i < incidents.length; i++) {
-      geocodedIncidents.push(incidents[i]);
-    }
-
-    return NextResponse.json({ incidents: geocodedIncidents, date });
+    // Return incidents immediately - geocoding is optional and done in background
+    // This ensures fast page loads regardless of geocoding service availability
+    return NextResponse.json({ incidents, date });
   } catch (error) {
     console.error('Error fetching incidents:', error);
     return NextResponse.json(
