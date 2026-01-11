@@ -24,7 +24,7 @@ This guide will help you set up the geocoding system with Mapbox and Supabase ca
 1. In Supabase dashboard, go to **Settings** > **API**
 2. Copy these values:
    - **Project URL** (looks like: `https://xxxxx.supabase.co`)
-   - **Service Role Key** (under "Project API keys" - this is the secret one, NOT the anon key)
+   - **anon public** key (under "Project API keys" - the public one)
 
 ## Step 4: Create Mapbox Account
 
@@ -44,7 +44,7 @@ This guide will help you set up the geocoding system with Mapbox and Supabase ca
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
-SUPABASE_SERVICE_KEY=your-service-role-key-here
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-public-key-here
 MAPBOX_ACCESS_TOKEN=pk.your-mapbox-token-here
 ```
 
@@ -58,7 +58,7 @@ For production deployment:
 2. Navigate to **Settings** > **Environment Variables**
 3. Add these three variables:
    - `NEXT_PUBLIC_SUPABASE_URL` = your Supabase URL
-   - `SUPABASE_SERVICE_KEY` = your Supabase service role key
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` = your Supabase anon/public key
    - `MAPBOX_ACCESS_TOKEN` = your Mapbox access token
 4. Click **"Save"** for each
 
